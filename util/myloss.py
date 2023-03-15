@@ -32,7 +32,7 @@ class NTXentLoss(nn.Module):
     def forward(
             self,
             out_1: torch.Tensor,
-            out_2: torch.Tensor
+            out_2: torch.Tensor,
         ):
         """
         out_1: [batch_size, dim]
@@ -67,3 +67,25 @@ class NTXentLoss(nn.Module):
             denominator = Ng
             
         return -torch.log(pos / (denominator + self.eps)).mean()
+
+
+# 검증 필요 https://github.com/Lightning-AI/lightning-bolts/blob/master/pl_bolts/losses/self_supervised_learning.py
+def nt_xent_loss(out_1, out_2, temperature):
+    """Loss used in SimCLR."""
+    out = torch.cat([out_1, out_2], dim=0)
+    n_samples = len(out)
+
+    # Full similarity matrix
+    cov = torch.mm(out, out.t().contiguous())
+    sim = torch.exp(cov / temperature)
+
+    # Negative similarity
+    mask = ~torch.eye(n_samples, device=sim.device).bool()
+    neg = sim.masked_select(mask).view(n_samples, -1).sum(dim=-1)
+
+    # Positive similarity :
+    pos = torch.exp(torch.sum(out_1 * out_2, dim=-1) / temperature)
+    pos = torch.cat([pos, pos], dim=0)
+    loss = -torch.log(pos / neg).mean()
+
+    return loss
