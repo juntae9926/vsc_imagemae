@@ -1,0 +1,26 @@
+version: '2.3'
+
+services:
+  main:
+    container_name: imagemae
+    ipc: host 
+    build:
+      context: .
+      dockerfile: Dockerfile
+    runtime: nvidia
+    env_file:
+      - docker-compose-env/main.env
+    restart: always
+    tty: true
+    stdin_open: true
+    volumes:
+      - /media/mmlab/hdd/imagemae:/user
+      - /media/mmlab/mldisk/nfs_shared_/vsc2022_data:/vsc2022_data
+      - /media/mmlab/mldisk/nfs_shared_/vsc2022_data_frame:/vsc2022_data_frame
+    ports:
+      - "10000:8000"
+      - "10022:22"
+      - "12345:12345"
+    expose:
+      - "8080"
+
