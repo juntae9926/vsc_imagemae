@@ -4,6 +4,8 @@
   <img src="https://user-images.githubusercontent.com/11435359/146857310-f258c86c-fde6-48e8-9cee-badd2b21bd2c.png" width="480">
 </p>
 
+
+## Fine-tuning for Image Retrieval
 ```
 OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=2 --master_port 12345 --nnodes=1 --master_addr="localhost"  main_finetune.py
 ```
