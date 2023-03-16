@@ -47,7 +47,7 @@ from util.datasets import VscDataset
 
 def get_args_parser():
     parser = argparse.ArgumentParser('MAE fine-tuning for image classification', add_help=False)
-    parser.add_argument('--batch_size', default=64, type=int,
+    parser.add_argument('--batch_size', default=32, type=int,
                         help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--accum_iter', default=1, type=int,
@@ -233,20 +233,136 @@ def main(args):
     model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss)
 
     checkpoint = torch.load(args.finetune, map_location='cpu')
-    model.load_state_dict(checkpoint, strict=False)
 
     # Change Order of ckpt keys
     temp = dict(checkpoint)
     c_k_list = list(temp.keys())
     c_k_list.insert(2, c_k_list.pop(c_k_list.index('decoder.mask_token')))
     c_k_list.insert(3, c_k_list.pop(c_k_list.index('decoder.decoder_pos_embed')))
+
+    #0
     c_k_list.insert(6, c_k_list.pop(c_k_list.index('vit.encoder.layer.0.layernorm_before.weight')))
     c_k_list.insert(7, c_k_list.pop(c_k_list.index('vit.encoder.layer.0.layernorm_before.bias')))
+    c_k_list.insert(16, c_k_list.pop(c_k_list.index('vit.encoder.layer.0.layernorm_after.weight')))
+    c_k_list.insert(17, c_k_list.pop(c_k_list.index('vit.encoder.layer.0.layernorm_after.bias')))
+
+    c_k_list.insert(22, c_k_list.pop(c_k_list.index('vit.encoder.layer.1.layernorm_before.weight')))
+    c_k_list.insert(23, c_k_list.pop(c_k_list.index('vit.encoder.layer.1.layernorm_before.bias')))
+    c_k_list.insert(32, c_k_list.pop(c_k_list.index('vit.encoder.layer.1.layernorm_after.weight')))
+    c_k_list.insert(33, c_k_list.pop(c_k_list.index('vit.encoder.layer.1.layernorm_after.bias')))
+
+    c_k_list.insert(38, c_k_list.pop(c_k_list.index('vit.encoder.layer.2.layernorm_before.weight')))
+    c_k_list.insert(39, c_k_list.pop(c_k_list.index('vit.encoder.layer.2.layernorm_before.bias')))
+    c_k_list.insert(48, c_k_list.pop(c_k_list.index('vit.encoder.layer.2.layernorm_after.weight')))
+    c_k_list.insert(49, c_k_list.pop(c_k_list.index('vit.encoder.layer.2.layernorm_after.bias')))
+
+    c_k_list.insert(54, c_k_list.pop(c_k_list.index('vit.encoder.layer.3.layernorm_before.weight')))
+    c_k_list.insert(55, c_k_list.pop(c_k_list.index('vit.encoder.layer.3.layernorm_before.bias')))
+    c_k_list.insert(64, c_k_list.pop(c_k_list.index('vit.encoder.layer.3.layernorm_after.weight')))
+    c_k_list.insert(65, c_k_list.pop(c_k_list.index('vit.encoder.layer.3.layernorm_after.bias')))
+
+    c_k_list.insert(70, c_k_list.pop(c_k_list.index('vit.encoder.layer.4.layernorm_before.weight')))
+    c_k_list.insert(71, c_k_list.pop(c_k_list.index('vit.encoder.layer.4.layernorm_before.bias')))
+    c_k_list.insert(80, c_k_list.pop(c_k_list.index('vit.encoder.layer.4.layernorm_after.weight')))
+    c_k_list.insert(81, c_k_list.pop(c_k_list.index('vit.encoder.layer.4.layernorm_after.bias')))
+
+    c_k_list.insert(86, c_k_list.pop(c_k_list.index('vit.encoder.layer.5.layernorm_before.weight')))
+    c_k_list.insert(87, c_k_list.pop(c_k_list.index('vit.encoder.layer.5.layernorm_before.bias')))
+    c_k_list.insert(96, c_k_list.pop(c_k_list.index('vit.encoder.layer.5.layernorm_after.weight')))
+    c_k_list.insert(96, c_k_list.pop(c_k_list.index('vit.encoder.layer.5.layernorm_after.bias')))
+
+    c_k_list.insert(102, c_k_list.pop(c_k_list.index('vit.encoder.layer.6.layernorm_before.weight')))
+    c_k_list.insert(103, c_k_list.pop(c_k_list.index('vit.encoder.layer.6.layernorm_before.bias')))
+    c_k_list.insert(112, c_k_list.pop(c_k_list.index('vit.encoder.layer.6.layernorm_after.weight')))
+    c_k_list.insert(113, c_k_list.pop(c_k_list.index('vit.encoder.layer.6.layernorm_after.bias')))
+
+    c_k_list.insert(118, c_k_list.pop(c_k_list.index('vit.encoder.layer.7.layernorm_before.weight')))
+    c_k_list.insert(119, c_k_list.pop(c_k_list.index('vit.encoder.layer.7.layernorm_before.bias')))
+    c_k_list.insert(128, c_k_list.pop(c_k_list.index('vit.encoder.layer.7.layernorm_after.weight')))
+    c_k_list.insert(129, c_k_list.pop(c_k_list.index('vit.encoder.layer.7.layernorm_after.bias')))
+
+    c_k_list.insert(134, c_k_list.pop(c_k_list.index('vit.encoder.layer.8.layernorm_before.weight')))
+    c_k_list.insert(135, c_k_list.pop(c_k_list.index('vit.encoder.layer.8.layernorm_before.bias')))
+    c_k_list.insert(144, c_k_list.pop(c_k_list.index('vit.encoder.layer.8.layernorm_after.weight')))
+    c_k_list.insert(145, c_k_list.pop(c_k_list.index('vit.encoder.layer.8.layernorm_after.bias')))
+
+    c_k_list.insert(150, c_k_list.pop(c_k_list.index('vit.encoder.layer.9.layernorm_before.weight')))
+    c_k_list.insert(151, c_k_list.pop(c_k_list.index('vit.encoder.layer.9.layernorm_before.bias')))
+    c_k_list.insert(160, c_k_list.pop(c_k_list.index('vit.encoder.layer.9.layernorm_after.weight')))
+    c_k_list.insert(161, c_k_list.pop(c_k_list.index('vit.encoder.layer.9.layernorm_after.bias')))
+
+    c_k_list.insert(166, c_k_list.pop(c_k_list.index('vit.encoder.layer.10.layernorm_before.weight')))
+    c_k_list.insert(167, c_k_list.pop(c_k_list.index('vit.encoder.layer.10.layernorm_before.bias')))
+    c_k_list.insert(176, c_k_list.pop(c_k_list.index('vit.encoder.layer.10.layernorm_after.weight')))
+    c_k_list.insert(177, c_k_list.pop(c_k_list.index('vit.encoder.layer.10.layernorm_after.bias')))
+
+    c_k_list.insert(182, c_k_list.pop(c_k_list.index('vit.encoder.layer.11.layernorm_before.weight')))
+    c_k_list.insert(183, c_k_list.pop(c_k_list.index('vit.encoder.layer.11.layernorm_before.bias')))
+    c_k_list.insert(192, c_k_list.pop(c_k_list.index('vit.encoder.layer.11.layernorm_after.weight')))
+    c_k_list.insert(193, c_k_list.pop(c_k_list.index('vit.encoder.layer.11.layernorm_after.bias')))
+
+##### DECODER
+
+    c_k_list.insert(202, c_k_list.pop(c_k_list.index('decoder.decoder_layers.0.layernorm_before.weight')))
+    c_k_list.insert(203, c_k_list.pop(c_k_list.index('decoder.decoder_layers.0.layernorm_before.bias')))
+    c_k_list.insert(211, c_k_list.pop(c_k_list.index('decoder.decoder_layers.0.layernorm_after.weight')))
+    c_k_list.insert(212, c_k_list.pop(c_k_list.index('decoder.decoder_layers.0.layernorm_after.bias')))
+
+    c_k_list.insert(218, c_k_list.pop(c_k_list.index('decoder.decoder_layers.1.layernorm_before.weight')))
+    c_k_list.insert(219, c_k_list.pop(c_k_list.index('decoder.decoder_layers.1.layernorm_before.bias')))
+    c_k_list.insert(227, c_k_list.pop(c_k_list.index('decoder.decoder_layers.1.layernorm_after.weight')))
+    c_k_list.insert(228, c_k_list.pop(c_k_list.index('decoder.decoder_layers.1.layernorm_after.bias')))
+
+    c_k_list.insert(234, c_k_list.pop(c_k_list.index('decoder.decoder_layers.2.layernorm_before.weight')))
+    c_k_list.insert(235, c_k_list.pop(c_k_list.index('decoder.decoder_layers.2.layernorm_before.bias')))
+    c_k_list.insert(244, c_k_list.pop(c_k_list.index('decoder.decoder_layers.2.layernorm_after.weight')))
+    c_k_list.insert(245, c_k_list.pop(c_k_list.index('decoder.decoder_layers.2.layernorm_after.bias')))
+
+    c_k_list.insert(250, c_k_list.pop(c_k_list.index('decoder.decoder_layers.3.layernorm_before.weight')))
+    c_k_list.insert(251, c_k_list.pop(c_k_list.index('decoder.decoder_layers.3.layernorm_before.bias')))
+    c_k_list.insert(259, c_k_list.pop(c_k_list.index('decoder.decoder_layers.3.layernorm_after.weight')))
+    c_k_list.insert(260, c_k_list.pop(c_k_list.index('decoder.decoder_layers.3.layernorm_after.bias')))
+
+    c_k_list.insert(266, c_k_list.pop(c_k_list.index('decoder.decoder_layers.4.layernorm_before.weight')))
+    c_k_list.insert(267, c_k_list.pop(c_k_list.index('decoder.decoder_layers.4.layernorm_before.bias')))
+    c_k_list.insert(275, c_k_list.pop(c_k_list.index('decoder.decoder_layers.4.layernorm_after.weight')))
+    c_k_list.insert(276, c_k_list.pop(c_k_list.index('decoder.decoder_layers.4.layernorm_after.bias')))
+
+    c_k_list.insert(282, c_k_list.pop(c_k_list.index('decoder.decoder_layers.5.layernorm_before.weight')))
+    c_k_list.insert(283, c_k_list.pop(c_k_list.index('decoder.decoder_layers.5.layernorm_before.bias')))
+    c_k_list.insert(291, c_k_list.pop(c_k_list.index('decoder.decoder_layers.5.layernorm_after.weight')))
+    c_k_list.insert(292, c_k_list.pop(c_k_list.index('decoder.decoder_layers.5.layernorm_after.bias')))
+
+    c_k_list.insert(298, c_k_list.pop(c_k_list.index('decoder.decoder_layers.6.layernorm_before.weight')))
+    c_k_list.insert(299, c_k_list.pop(c_k_list.index('decoder.decoder_layers.6.layernorm_before.bias')))
+    c_k_list.insert(307, c_k_list.pop(c_k_list.index('decoder.decoder_layers.6.layernorm_after.weight')))
+    c_k_list.insert(308, c_k_list.pop(c_k_list.index('decoder.decoder_layers.6.layernorm_after.bias')))
+
+    c_k_list.insert(314, c_k_list.pop(c_k_list.index('decoder.decoder_layers.7.layernorm_before.weight')))
+    c_k_list.insert(315, c_k_list.pop(c_k_list.index('decoder.decoder_layers.7.layernorm_before.bias')))
+    c_k_list.insert(323, c_k_list.pop(c_k_list.index('decoder.decoder_layers.7.layernorm_after.weight')))
+    c_k_list.insert(324, c_k_list.pop(c_k_list.index('decoder.decoder_layers.7.layernorm_after.bias')))
+
+
+
+
     m_k_list = list(model.state_dict().keys())
 
     new_state_dict = collections.OrderedDict()
     for i, k in enumerate(c_k_list):
-        new_state_dict[m_k_list[i]] = checkpoint[k]
+        new_state_dict[m_k_list[i]] = temp[k]
+
+    
+
+
+
+
+
+
+
+
+    # new_state_dict = collections.OrderedDict()
+    model.load_state_dict(new_state_dict, strict=True)
 
     model.to(device)
     model_without_ddp = model

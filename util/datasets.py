@@ -97,6 +97,7 @@ class VscDataset(Dataset):
             for frame in frames:
                 frame_dir = os.path.join(file_path, video_id, frame)
                 self.total_frames.append(frame_dir)
+            batch_bar.update()
         batch_bar.close()
         print(f'Total frame number is {self.__len__}')    
 
