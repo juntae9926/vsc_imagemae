@@ -15,6 +15,12 @@ bash OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=2 --m
 wget https://huggingface.co/facebook/vit-mae-base/resolve/main/pytorch_model.bin
 ```
 
+## TODO
+- [ ] Strong Augmentation code
+- [ ] Evaluation code
+- [ ] Make Submission file
+- [ ] Do we use all frames for training our model?
+- [ ] Loss abliation study(by using lambda)
 
 
 This code base is strongly reused "re-implementation of the paper". [Masked Autoencoders Are Scalable Vision Learners](https://arxiv.org/abs/2111.06377):
