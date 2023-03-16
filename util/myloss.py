@@ -89,3 +89,37 @@ def nt_xent_loss(out_1, out_2, temperature):
     loss = -torch.log(pos / neg).mean()
 
     return loss
+
+import torch
+import torch.nn.functional as F
+
+class InfoNCELoss(torch.nn.Module):
+    def __init__(self, temperature=0.5):
+        super(InfoNCELoss, self).__init__()
+        self.temperature = temperature
+
+    def forward(self, query, pos_samples):
+        # Flatten the input tensors
+        query = query.view(query.size(0), -1)
+        pos_samples = pos_samples.view(pos_samples.size(0), -1)
+
+        # Concatenate the query and positive samples
+        # along the batch dimension
+        pos_samples = torch.cat([query, pos_samples], dim=1)
+
+        # Compute the dot product of the query and positive samples
+        pos_dot_product = torch.bmm(pos_samples, query.unsqueeze(2)).squeeze()
+        pos_dot_product /= self.temperature
+
+        # Compute the dot product of the query and negative samples
+        neg_samples = torch.cat([pos_samples[:, :i, :], pos_samples[:, i+1:, :]], dim=1)
+        neg_samples = neg_samples.view(-1, neg_samples.size(2))
+        neg_dot_product = torch.mm(neg_samples, query.t())
+        neg_dot_product /= self.temperature
+
+        # Compute the contrastive loss using the InfoNCE criterion
+        contrastive_logits = torch.cat([pos_dot_product, neg_dot_product], dim=1)
+        contrastive_labels = torch.zeros(query.size(0), dtype=torch.long).to(query.device)
+        contrastive_loss = F.cross_entropy(contrastive_logits, contrastive_labels)
+
+        return contrastive_loss

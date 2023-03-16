@@ -20,6 +20,7 @@ from pathlib import Path
 import torch
 import torch.backends.cudnn as cudnn
 from torch.utils.tensorboard import SummaryWriter
+import collections
 
 import timm
 
@@ -31,7 +32,7 @@ import timm.optim.optim_factory as optim_factory
 
 import util.lr_decay as lrd
 import util.misc as misc
-from util.datasets import build_dataset
+
 from util.pos_embed import interpolate_pos_embed
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 
@@ -39,12 +40,14 @@ import models_mae
 from transformers import ViTMAEForPreTraining, ViTMAEModel
 
 from engine_finetune import train_one_epoch, evaluate
-from util.myloss import NTXentLoss
+from util.myloss import NTXentLoss, InfoNCELoss
+from util.datasets import VscDataset
+
 
 
 def get_args_parser():
     parser = argparse.ArgumentParser('MAE fine-tuning for image classification', add_help=False)
-    parser.add_argument('--batch_size', default=512, type=int,
+    parser.add_argument('--batch_size', default=64, type=int,
                         help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--accum_iter', default=1, type=int,
@@ -118,7 +121,7 @@ def get_args_parser():
                         help='How to apply mixup/cutmix params. Per "batch", "pair", or "elem"')
 
     # * Finetuning params
-    parser.add_argument('--finetune', default='./pre/mae_pretrain_vit_base.pth',
+    parser.add_argument('--finetune', default='./pre/pytorch_model.bin',
                         help='finetune from checkpoint')
     parser.add_argument('--global_pool', action='store_true')
     # parser.set_defaults(global_pool=True)
@@ -179,9 +182,10 @@ def main(args):
 
     cudnn.benchmark = True
 
-    dataset_train = build_dataset(is_train=True, mode='train', args=args)
+    # dataset_train = build_dataset(is_train=True, mode='train', args=args)
+    dataset_train = VscDataset(args.data_path, mode='train', args=args)
     # dataset_val = build_dataset(is_train=False, mode='val', args=args)
-    args.distributed = True
+    # args.distributed = True
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
         global_rank = misc.get_rank()
@@ -225,60 +229,26 @@ def main(args):
     # )
 
     mixup_fn = None
-    # mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
-    # if mixup_active:
-    #     print("Mixup is activated!")
-    #     mixup_fn = Mixup(
-    #         mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
-    #         prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
-    #         label_smoothing=args.smoothing, num_classes=args.nb_classes)
-    
-    # model = models_vit.__dict__[args.model](
-    #     num_classes=args.nb_classes,
-    #     drop_path_rate=args.drop_path,
-    #     global_pool=args.global_pool,
-    # )
+
     model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss)
-    # model = ViTMAEModel.from_pretrained("facebook/vit-mae-base")
-    # model = ViTMAEForPreTraining.from_pretrained('facebook/vit-mae-base')
-    # model.load_state_dict(torch.load(args.finetune, map_location='cpu')['model'], strict=False)
-    checkpoint = torch.load(args.finetune, map_location='cpu')['model']
-    state_dict = model.state_dict()
-    for k in state_dict.keys():
-        if k in checkpoint and checkpoint[k].shape != state_dict[k].shape:
-            print(k)
+
+    checkpoint = torch.load(args.finetune, map_location='cpu')
     model.load_state_dict(checkpoint, strict=False)
-        
 
-    # import pdb; pdb.set_trace()
-    # if args.finetune and not args.eval:
-    #     checkpoint = torch.load(args.finetune, map_location='cpu')
+    # Change Order of ckpt keys
+    temp = dict(checkpoint)
+    c_k_list = list(temp.keys())
+    c_k_list.insert(2, c_k_list.pop(c_k_list.index('decoder.mask_token')))
+    c_k_list.insert(3, c_k_list.pop(c_k_list.index('decoder.decoder_pos_embed')))
+    c_k_list.insert(6, c_k_list.pop(c_k_list.index('vit.encoder.layer.0.layernorm_before.weight')))
+    c_k_list.insert(7, c_k_list.pop(c_k_list.index('vit.encoder.layer.0.layernorm_before.bias')))
+    m_k_list = list(model.state_dict().keys())
 
-    #     print("Load pre-trained checkpoint from: %s" % args.finetune)
-    #     checkpoint_model = checkpoint['model']
-    #     state_dict = model.state_dict()
-    #     for k in ['head.weight', 'head.bias']:
-    #         if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-    #             print(f"Removing key {k} from pretrained checkpoint")
-    #             del checkpoint_model[k]
+    new_state_dict = collections.OrderedDict()
+    for i, k in enumerate(c_k_list):
+        new_state_dict[m_k_list[i]] = checkpoint[k]
 
-    #     # interpolate position embedding
-    #     interpolate_pos_embed(model, checkpoint_model)
-
-    #     # load pre-trained model
-    #     msg = model.load_state_dict(checkpoint_model, strict=False)
-    #     print(msg)
-
-    #     if args.global_pool:
-    #         assert set(msg.missing_keys) == {'head.weight', 'head.bias', 'fc_norm.weight', 'fc_norm.bias'}
-    #     else:
-    #         assert set(msg.missing_keys) == {'head.weight', 'head.bias'}
-
-    #     manually initialize fc layer
-    #     trunc_normal_(model.head.weight, std=2e-5)
-    
     model.to(device)
-
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -317,7 +287,8 @@ def main(args):
     #     criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
     # else:
     #     criterion = torch.nn.CrossEntropyLoss()
-    criterion = NTXentLoss(temperature=0.1)
+    criterion = NTXentLoss(temperature=0.5)
+    # criterion = InfoNCELoss(temperature=0.5)
     print("criterion = %s" % str(criterion))
 
     misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)

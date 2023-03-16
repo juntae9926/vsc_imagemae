@@ -40,14 +40,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     if log_writer is not None:
         print('log_dir: {}'.format(log_writer.log_dir))
 
-    for data_iter_step, (samples) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for data_iter_step, (samples, positives) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
 
         samples = samples.to(device, non_blocking=True)
-        # targets = targets.to(device, non_blocking=True)
+        positives = positives.to(device, non_blocking=True)
 
         # if mixup_fn is not None:
         #     samples, targets = mixup_fn(samples, targets)
@@ -55,16 +55,19 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         with torch.cuda.amp.autocast():
             # outputs = model(samples)
             # loss = criterion(outputs, targets)
-            loss, _, _ = model(samples, mask_ratio=args.mask_ratio)
+            _, r_loss, _, _ = model(samples, mask_ratio=args.mask_ratio)
 
-        loss_value = loss.item()
+            latent_original, _, _, _ = model(samples, mask_ratio=0.0)
+            latent_positive, _, _, _ = model(positives, mask_ratio=0.0)
+        c_loss = criterion(latent_original, latent_positive)
 
-        if not math.isfinite(loss_value):
-            print("Loss is {}, stopping training".format(loss_value))
+        total_loss = r_loss + c_loss
+        if not math.isfinite(total_loss):
+            print("Total Loss is {}, stopping training".format(total_loss))
             sys.exit(1)
 
-        loss /= accum_iter
-        loss_scaler(loss, optimizer, clip_grad=max_norm,
+        total_loss /= accum_iter
+        loss_scaler(total_loss, optimizer, clip_grad=max_norm,
                     parameters=model.parameters(), create_graph=False,
                     update_grad=(data_iter_step + 1) % accum_iter == 0)
         if (data_iter_step + 1) % accum_iter == 0:
@@ -72,7 +75,9 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         torch.cuda.synchronize()
 
-        metric_logger.update(loss=loss_value)
+        # metric_logger.update(loss=r_loss)
+        # metric_logger.update(loss=c_loss)
+        metric_logger.update(loss=total_loss)
         min_lr = 10.
         max_lr = 0.
         for group in optimizer.param_groups:
@@ -82,13 +87,13 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=max_lr)
 
-        loss_value_reduce = misc.all_reduce_mean(loss_value)
+        total_loss_reduce = misc.all_reduce_mean(total_loss)
         if log_writer is not None and (data_iter_step + 1) % accum_iter == 0:
             """ We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
             epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
-            log_writer.add_scalar('train_loss', loss_value_reduce, epoch_1000x)
+            log_writer.add_scalar('train_loss', total_loss_reduce, epoch_1000x)
             log_writer.add_scalar('lr', lr, epoch_1000x)
 
     # gather the stats from all processes
