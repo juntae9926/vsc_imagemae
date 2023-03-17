@@ -103,29 +103,36 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 
 @torch.no_grad()
-def evaluate(data_loader, model, device):
-    # criterion = torch.nn.CrossEntropyLoss()
-
+def evaluate(data_loader, model, device, criterion, args):
+    #criterion = torch.nn.CrossEntropyLoss()
+    
     metric_logger = misc.MetricLogger(delimiter="  ")
-    header = 'Test:'
-
+    # header = 'Test:'
+    header = '[Validation]'
     # switch to evaluation mode
     model.eval()
+    total_loss = 0.0
 
-    for batch in metric_logger.log_every(data_loader, 10, header):
-        images = batch[0]
-        # target = batch[-1]
-        images = images.to(device, non_blocking=True)
-        # target = target.to(device, non_blocking=True)
+    # for batch_idx, val_dict in enumerate(data_loader):
+    for batch_idx, val_dict in enumerate(metric_logger.log_every(data_loader, 3, header)):
+        q_label = val_dict['q_name']
+        q_frame = val_dict['q_img']
+        r_label = val_dict['r_name']
+        r_frame = val_dict['r_img']
 
-        # compute output
+        q_frame = q_frame.to(device, non_blocking=True)
+        r_frame = r_frame.to(device, non_blocking=True)
+
         with torch.cuda.amp.autocast():
-            # output = model(images)
-            # loss = criterion(output, target)
-            loss, _, _ = model(samples, mask_ratio=args.mask_ratio)
+            _, r_loss, _, _ = model(q_frame, mask_ratio=args.mask_ratio)
+            latent_q_frame, _, _, _ = model(q_frame, mask_ratio=0.0)
+            latent_r_frame, _, _, _ = model(r_frame, mask_ratio=0.0)
+        c_loss = criterion(latent_q_frame, latent_r_frame)
+
+        total_loss = r_loss + c_loss
+        metric_logger.update(loss=total_loss.item())
 
         # acc1, acc5 = accuracy(output, target, topk=(1, 5))
-
         # batch_size = images.shape[0]
         # metric_logger.update(loss=loss.item())
         # metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
@@ -136,4 +143,5 @@ def evaluate(data_loader, model, device):
     #       .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
 
     # return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
-    return loss.item()
+    # return total_loss.item()
+    return total_loss

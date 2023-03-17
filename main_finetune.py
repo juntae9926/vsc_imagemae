@@ -42,6 +42,7 @@ from transformers import ViTMAEForPreTraining, ViTMAEModel
 from engine_finetune import train_one_epoch, evaluate
 from util.myloss import NTXentLoss, InfoNCELoss
 from util.datasets import VscDataset
+from vsc.descriptor_eval_lib import evaluate_descriptor_track
 
 
 
@@ -184,7 +185,7 @@ def main(args):
 
     # dataset_train = build_dataset(is_train=True, mode='train', args=args)
     dataset_train = VscDataset(args.data_path, mode='train', args=args)
-    # dataset_val = build_dataset(is_train=False, mode='val', args=args)
+    dataset_val = VscDataset(args.data_path, mode='val', args=args)    
     # args.distributed = True
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
@@ -192,19 +193,22 @@ def main(args):
         sampler_train = torch.utils.data.DistributedSampler(
             dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
         )
+        sampler_val = torch.utils.data.DistributedSampler(
+            dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False
+        )
         print("Sampler_train = %s" % str(sampler_train))
-        # if args.dist_eval:
-        #     if len(dataset_val) % num_tasks != 0:
-        #         print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
-        #               'This will slightly alter validation results as extra duplicate entries are added to achieve '
-        #               'equal num of samples per-process.')
-        #     sampler_val = torch.utils.data.DistributedSampler(
-        #         dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=True)  # shuffle=True to reduce monitor bias
-        # else:
-        #     sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+        if args.dist_eval:
+            if len(dataset_val) % num_tasks != 0:
+                print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
+                      'This will slightly alter validation results as extra duplicate entries are added to achieve '
+                      'equal num of samples per-process.')
+            sampler_val = torch.utils.data.DistributedSampler(
+                dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=True)  # shuffle=True to reduce monitor bias
+        else:
+            sampler_val = torch.utils.data.SequentialSampler(dataset_val)
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
-        # sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
     if global_rank == 0 and args.log_dir is not None and not args.eval:
         os.makedirs(args.log_dir, exist_ok=True)
@@ -220,13 +224,13 @@ def main(args):
         drop_last=True,
     )
 
-    # data_loader_val = torch.utils.data.DataLoader(
-    #     dataset_val, sampler=sampler_val,
-    #     batch_size=args.batch_size,
-    #     num_workers=args.num_workers,
-    #     pin_memory=args.pin_mem,
-    #     drop_last=False
-    # )
+    data_loader_val = torch.utils.data.DataLoader(
+        dataset_val, sampler=sampler_val,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=args.pin_mem,
+        drop_last=False
+    )
 
     mixup_fn = None
 
@@ -343,23 +347,21 @@ def main(args):
     c_k_list.insert(323, c_k_list.pop(c_k_list.index('decoder.decoder_layers.7.layernorm_after.weight')))
     c_k_list.insert(324, c_k_list.pop(c_k_list.index('decoder.decoder_layers.7.layernorm_after.bias')))
 
-
+    # make 512 embedding size
+    c_k_list.insert(200, 'linear.weight')
+    c_k_list.insert(201, 'linear.bias')
 
 
     m_k_list = list(model.state_dict().keys())
 
     new_state_dict = collections.OrderedDict()
     for i, k in enumerate(c_k_list):
-        new_state_dict[m_k_list[i]] = temp[k]
-
-    
-
-
-
-
-
-
-
+        if 'linear.weight' in k:
+            new_state_dict[m_k_list[i]] = model.state_dict()['linear.weight']
+        elif 'linear.bias' in k:
+            new_state_dict[m_k_list[i]] = model.state_dict()['linear.bias']
+        else:
+            new_state_dict[m_k_list[i]] = temp[k]
 
     # new_state_dict = collections.OrderedDict()
     model.load_state_dict(new_state_dict, strict=True)
@@ -392,19 +394,10 @@ def main(args):
     #     layer_decay=args.layer_decay
     # )
     param_groups = optim_factory.param_groups_weight_decay(model_without_ddp, args.weight_decay) # param_groups_layer_decay
-    optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
-    # optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
+    # optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
+    optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
     loss_scaler = NativeScaler()
-
-    # if mixup_fn is not None:
-    #     # smoothing is handled with mixup label transform
-    #     criterion = SoftTargetCrossEntropy()
-    # elif args.smoothing > 0.:
-    #     criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
-    # else:
-    #     criterion = torch.nn.CrossEntropyLoss()
     criterion = NTXentLoss(temperature=0.5)
-    # criterion = InfoNCELoss(temperature=0.5)
     print("criterion = %s" % str(criterion))
 
     misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
@@ -432,26 +425,19 @@ def main(args):
                 args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                 loss_scaler=loss_scaler, epoch=epoch)
 
-        test_stats = evaluate(data_loader_val, model, device)
-        print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
-        max_accuracy = max(max_accuracy, test_stats["acc1"])
-        print(f'Max accuracy: {max_accuracy:.2f}%')
+        test_stats = evaluate(data_loader_val, model, device, criterion, args)
+        print(f"Loss of the network on the {len(dataset_val)} validataion loss: {test_stats:.1f}%")
 
-        if log_writer is not None:
-            log_writer.add_scalar('perf/test_acc1', test_stats['acc1'], epoch)
-            log_writer.add_scalar('perf/test_acc5', test_stats['acc5'], epoch)
-            log_writer.add_scalar('perf/test_loss', test_stats['loss'], epoch)
+        # log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+        #                 **{f'test_{k}': v for k, v in test_stats.items()},
+        #                 'epoch': epoch,
+        #                 'n_parameters': n_parameters}
 
-        log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                        **{f'test_{k}': v for k, v in test_stats.items()},
-                        'epoch': epoch,
-                        'n_parameters': n_parameters}
-
-        if args.output_dir and misc.is_main_process():
-            if log_writer is not None:
-                log_writer.flush()
-            with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
-                f.write(json.dumps(log_stats) + "\n")
+        # if args.output_dir and misc.is_main_process():
+        #     if log_writer is not None:
+        #         log_writer.flush()
+        #     with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
+        #         f.write(json.dumps(log_stats) + "\n")
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

@@ -40,6 +40,8 @@ class MaskedAutoencoderViT(nn.Module):
             Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
+
+        self.linear = nn.Linear(embed_dim, 512)
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -215,9 +217,10 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio=0.75):
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
+        final_embed = self.linear(latent[:,0,:])
         pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
-        return latent[:,0,:], loss, pred, mask
+        return final_embed, loss, pred, mask
 
 
 def mae_vit_base_patch16_dec512d1b(**kwargs):

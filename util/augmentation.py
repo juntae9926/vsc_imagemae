@@ -17,6 +17,8 @@ import pickle
 from pathlib import Path
 import random
 from typing import Any, Dict, List, Optional
+import augly.image as imaugs
+from augly.image.composition import Compose, OneOf
 
 class PseudoTransform:
     def __init__(self):
@@ -43,4 +45,15 @@ class PseudoTransform:
 
     def __call__(self, x):
         return (self.aug_weak(x), self.aug_strong(x))
-    
+  
+class ValTransform:
+    def __init__(self):
+        self.aug_val = [
+            transforms.RandomResizedCrop(224, scale=(0.7, 1.)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+        ]
+        self.aug = transforms.Compose(self.aug_val)
+        
+    def __call__(self, x):
+        return self.aug(x)

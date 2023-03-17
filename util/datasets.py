@@ -20,7 +20,7 @@ from torchvision import datasets, transforms
 
 from timm.data import create_transform
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from util.augmentation import PseudoTransform
+from util.augmentation import PseudoTransform, ValTransform
 
 
 # def build_dataset(is_train, mode, args):
@@ -75,46 +75,83 @@ class VscDataset(Dataset):
         self.root_path = root_path
         self.mode = mode
         self.args = args
+        #230318 wonil val VscDataset' object has no attribute 'total_frames' error
+        self.total_frames = []
 
         if mode == 'train':
             file_path = os.path.join(self.root_path, 'train/reference')
             anno_path = os.path.join(self.root_path, 'train/train_reference_metadata.csv')
         elif mode == 'val':
-            query_path = os.path.join(self.root_path, 'train/query')
-            file_path = os.path.join(self.root_path, 'train/reference')
-            anno_path = os.path.join(self.root_path, 'train/train_descriptor_ground_truth.csv')
+            query_path = os.path.join(self.root_path, 'val/query')
+            ref_path = os.path.join(self.root_path, 'val/reference')
+            anno_path = os.path.join(self.root_path, 'val/train_matching_ground_truth.csv')
         else:
             NotImplementedError
-        anno = pd.read_csv(anno_path)
-        self.video_ids = list(anno['video_id'])
-        # self.dataset_lengths = list(map(lambda x: math.ceil(x), list(anno['duration_sec'])))
+        if mode == 'train':
+            anno = pd.read_csv(anno_path)
+            #self.video_ids = list(anno['video_id'])
+            self.video_ids = list(anno['video_id'])[:32]
+            # self.dataset_lengths = list(map(lambda x: math.ceil(x), list(anno['duration_sec'])))
 
-        self.total_frames = []
-        batch_bar = tqdm(total=len(self.video_ids), dynamic_ncols=True, leave=False, position=0, desc=f'Ready to set {self.mode} video list')
-        for video_id in self.video_ids:
-            video = os.path.join(file_path, video_id)
-            frames = sorted(entry.name for entry in os.scandir(video) if entry.name.endswith('png'))
-            for frame in frames:
-                frame_dir = os.path.join(file_path, video_id, frame)
-                self.total_frames.append(frame_dir)
-            batch_bar.update()
-        batch_bar.close()
-        print(f'Total frame number is {self.__len__}')    
+            batch_bar = tqdm(total=len(self.video_ids), dynamic_ncols=True, leave=False, position=0, desc=f'Ready to set {self.mode} video list')
+            for video_id in self.video_ids:
+                video = os.path.join(file_path, video_id)
+                frames = sorted(entry.name for entry in os.scandir(video) if entry.name.endswith('png'))
+                for frame in frames:
+                    frame_dir = os.path.join(file_path, video_id, frame)
+                    self.total_frames.append(frame_dir)
+                batch_bar.update()
+            batch_bar.close()
+            print(f'Total frame number is {self.__len__}')    
 
-        self.transforms = PseudoTransform()
-              
+            self.transforms = PseudoTransform()
+        elif mode == 'val':
+            #230318 wonil
+            self.transforms = ValTransform()
+            anno = pd.read_csv(anno_path)
+            self.gt_pairs = list()
+            self.queries = list(anno['query_id'])
+            self.refs = list(anno['ref_id'])
+            query_st = list(anno['query_start'])
+            query_end = list(anno['query_end'])
+            ref_st = list(anno['ref_start'])
+            ref_end = list(anno['ref_end'])
+            query_abs = [int(int(i+j)/2) for i,j in zip(query_st, query_end)]
+            ref_abs = [int(int(i+j)/2) for i,j in zip(ref_st, ref_end)]
+            for q, r in zip(self.queries, self.refs):
+                self.gt_pairs.append([q,r])
+            batch_bar = tqdm(total=len(self.queries), dynamic_ncols=True, leave=False, position=0, desc=f'Ready to set {self.mode} video list')
+            self.query_dir = list()
+            self.ref_dir = list()
+            # parent_dir, query_id, time
+            for query_id, time in zip(self.queries, query_abs):
+                tmp = f"{query_id}_{time:04}"
+                dir = os.path.join(query_path, query_id, tmp)
+                self.query_dir.append(dir)
+            for ref_id, time in zip(self.refs, ref_abs):
+                tmp = f"{ref_id}_{time:04}"
+                dir = os.path.join(ref_path, ref_id, tmp)
+                self.ref_dir.append(dir)
+                batch_bar.update()
+            batch_bar.close()
+            
 
     def __getitem__(self, index):
         if self.mode == 'train':
             frame = PIL.Image.open(self.total_frames[index])
-            # frame = self.total_frames[index]
-
             frame, positive_frame = self.transforms(frame)
-
-            # frame = self.weak_aug(frame) # original with weak augmentation
-            # positive_frame = self.strong_aug(frame) # positive pair with strong augmentation
-
-        return (frame, positive_frame)
+            return (frame, positive_frame)
+        elif self.mode == 'val':
+            q_frame = PIL.Image.open(self.query_dir[index]+".png")
+            q_frame = self.transforms(q_frame)
+            r_frame = PIL.Image.open(self.ref_dir[index]+".png")
+            r_frame = self.transforms(r_frame)
+            q_label = self.queries[index]
+            r_label = self.refs[index]
+            return {'q_name' : q_label, 'q_img' : q_frame, 'r_name' : r_label, 'r_img' : r_frame}
 
     def __len__(self):
-        return len(self.total_frames)
+        if self.mode == 'train':
+            return len(self.total_frames)
+        else:
+            return len(self.query_dir)
