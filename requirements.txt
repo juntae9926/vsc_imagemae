@@ -1,2 +1,5 @@
 tensorboard
 timm
+transformers
+augly
+pandas
