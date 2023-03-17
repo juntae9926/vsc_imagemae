@@ -3,3 +3,6 @@ timm
 transformers
 augly
 pandas
+faiss-gpu
+matplotlib
+scikit-learn
