@@ -91,7 +91,7 @@ class VscDataset(Dataset):
         if mode == 'train':
             anno = pd.read_csv(anno_path)
             #self.video_ids = list(anno['video_id'])
-            self.video_ids = list(anno['video_id'])[:256]
+            self.video_ids = list(anno['video_id'])
             # self.dataset_lengths = list(map(lambda x: math.ceil(x), list(anno['duration_sec'])))
 
             batch_bar = tqdm(total=len(self.video_ids), dynamic_ncols=True, leave=False, position=0, desc=f'Ready to set {self.mode} video list')
