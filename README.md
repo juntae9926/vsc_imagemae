@@ -17,9 +17,9 @@ wget https://huggingface.co/facebook/vit-mae-base/resolve/main/pytorch_model.bin
 
 ## TODO
 - [ ] Strong Augmentation code
-- [ ] Evaluation code
+- [X] Evaluation code
 - [ ] Make Submission file
-- [ ] Do we use all frames for training our model?
+- [X] Do we use all frames for training our model? No, We use two random frames for each video.
 - [ ] Loss abliation study(by using lambda)
 
 
