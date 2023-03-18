@@ -89,7 +89,6 @@ def cutmix_bbox_and_lam(img_shape, lam, ratio_minmax=None, correct_lam=True, cou
 
 class Mixup:
     """ Mixup/Cutmix that applies different params to each element or whole batch
-
     Args:
         mixup_alpha (float): mixup alpha value, mixup is active if > 0.
         cutmix_alpha (float): cutmix alpha value, cutmix is active if > 0.
@@ -206,7 +205,7 @@ class Mixup:
             x.mul_(lam).add_(x_flipped)
         return lam
 
-    def __call__(self, x, target):
+    def __call__(self, x):
         assert len(x) % 2 == 0, 'Batch size should be even when using this'
         if self.mode == 'elem':
             lam = self._mix_elem(x)
@@ -214,13 +213,12 @@ class Mixup:
             lam = self._mix_pair(x)
         else:
             lam = self._mix_batch(x)
-        target = mixup_target(target, self.num_classes, lam, self.label_smoothing, x.device)
-        return x, target
+        # target = mixup_target(target, self.num_classes, lam, self.label_smoothing, x.device)
+        return x
 
 
 class FastCollateMixup(Mixup):
     """ Fast Collate w/ Mixup/Cutmix that applies different params to each element or whole batch
-
     A Mixup impl that's performed while collating the batches.
     """
 
@@ -313,4 +311,3 @@ class FastCollateMixup(Mixup):
         target = mixup_target(target, self.num_classes, lam, self.label_smoothing, device='cpu')
         target = target[:batch_size]
         return output, target
-

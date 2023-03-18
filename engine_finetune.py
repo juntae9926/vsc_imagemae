@@ -15,6 +15,8 @@ from typing import Iterable, Optional
 
 import torch
 
+from timm.data import Mixup
+
 import util.misc as misc
 import util.lr_sched as lr_sched
 
@@ -22,7 +24,7 @@ import util.lr_sched as lr_sched
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
-                    log_writer=None,
+                    mixup_fn: Optional[Mixup] = None, log_writer=None,
                     args=None):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -45,6 +47,9 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         samples = samples.to(device, non_blocking=True)
         positives = positives.to(device, non_blocking=True)
+
+        if mixup_fn is not None:
+            samples = mixup_fn(samples)
 
         with torch.cuda.amp.autocast():
             _, r_loss, _, _ = model(samples, mask_ratio=args.mask_ratio)
