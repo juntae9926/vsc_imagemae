@@ -1,12 +1,10 @@
-PRETRAIN_CHKPT='./pre/mae_pretrain_vit_base.pth'
-DATA_DIR='/vsc2022_data_frame/'
+NNODES=1 #Number of total node
+NODE_RANK=0 #Rank of total node
+NPROC_PER_NODE=2 #Process number of this node
+MASTER_ADDR='localhost'
+MASTER_PORT='45454'
 
-python submitit_finetune.py \
-    --nodes 1 \
-    --batch_size 32 \
-    --model vit_base_patch16 \
-    --finetune ${PRETRAIN_CHKPT} \
-    --epochs 100 \
-    --blr 5e-4 --layer_decay 0.65 \
-    --weight_decay 0.05 --drop_path 0.1 --reprob 0.25 --mixup 0.8 --cutmix 1.0 \
-    --dist_eval --data_path ${DATA_DIR}
+python -m torch.distributed.launch --nnodes=${NNODES} --node_rank=${NODE_RANK} \
+    --nproc_per_node=${NPROC_PER_NODE} --master_addr=${MASTER_ADDR} --master_port=${MASTER_PORT} \
+    ./main_finetune.py --batch_size 64 --blr 1e-3
+
