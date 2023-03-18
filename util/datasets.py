@@ -13,6 +13,7 @@ import PIL
 import pandas as pd
 import math
 from tqdm import tqdm
+import random
 
 import torch
 from torch.utils.data import Dataset
@@ -90,16 +91,21 @@ class VscDataset(Dataset):
         if mode == 'train':
             anno = pd.read_csv(anno_path)
             #self.video_ids = list(anno['video_id'])
-            self.video_ids = list(anno['video_id'])
+            self.video_ids = list(anno['video_id'])[:256]
             # self.dataset_lengths = list(map(lambda x: math.ceil(x), list(anno['duration_sec'])))
 
             batch_bar = tqdm(total=len(self.video_ids), dynamic_ncols=True, leave=False, position=0, desc=f'Ready to set {self.mode} video list')
             for video_id in self.video_ids:
-                video = os.path.join(file_path, video_id)
-                frames = sorted(entry.name for entry in os.scandir(video) if entry.name.endswith('png'))
-                for frame in frames:
-                    frame_dir = os.path.join(file_path, video_id, frame)
-                    self.total_frames.append(frame_dir)
+                try:
+                    video = os.path.join(file_path, video_id)
+                    frames = sorted(entry.name for entry in os.scandir(video) if entry.name.endswith('png'))
+                    frames = random.choices(frames, k=2)
+                    
+                    for frame in frames:
+                        frame_dir = os.path.join(file_path, video_id, frame)
+                        self.total_frames.append(frame_dir)
+                except:
+                    continue
                 batch_bar.update()
             batch_bar.close()
             print(f'Total frame number is {self.__len__}')    
@@ -126,12 +132,14 @@ class VscDataset(Dataset):
             # parent_dir, query_id, time
             for query_id, time in zip(self.queries, query_abs):
                 tmp = f"{query_id}_{time:04}"
-                dir = os.path.join(query_path, query_id, tmp)
-                self.query_dir.append(dir)
+                dir = os.path.join(query_path, query_id, tmp + ".png")
+                if os.path.isfile(dir):
+                    self.query_dir.append(dir)
             for ref_id, time in zip(self.refs, ref_abs):
                 tmp = f"{ref_id}_{time:04}"
-                dir = os.path.join(ref_path, ref_id, tmp)
-                self.ref_dir.append(dir)
+                dir = os.path.join(ref_path, ref_id, tmp + ".png")
+                if os.path.isfile(dir):
+                    self.ref_dir.append(dir)
                 batch_bar.update()
             batch_bar.close()
             
@@ -142,9 +150,9 @@ class VscDataset(Dataset):
             frame, positive_frame = self.transforms(frame)
             return (frame, positive_frame)
         elif self.mode == 'val':
-            q_frame = PIL.Image.open(self.query_dir[index]+".png")
+            q_frame = PIL.Image.open(self.query_dir[index])
             q_frame = self.transforms(q_frame)
-            r_frame = PIL.Image.open(self.ref_dir[index]+".png")
+            r_frame = PIL.Image.open(self.ref_dir[index])
             r_frame = self.transforms(r_frame)
             q_label = self.queries[index]
             r_label = self.refs[index]
